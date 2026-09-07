@@ -1,0 +1,1234 @@
+-- [[ NUEAKUB Hub v9.2 — Monochrome Squircle + Key System ]] --
+-- Delta/Codex Compatible
+local TweenService     = game:GetService("TweenService")
+local CoreGui          = game:GetService("CoreGui")
+local Players          = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+local LocalPlayer      = Players.LocalPlayer
+
+if CoreGui:FindFirstChild("NUEAKUB_v9") then CoreGui:FindFirstChild("NUEAKUB_v9"):Destroy() end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name           = "NUEAKUB_v9"
+ScreenGui.ResetOnSpawn   = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent         = CoreGui
+
+-- ============================================================
+--  KEY SYSTEM
+-- ============================================================
+if not getgenv().NUEAKUB_Keys then getgenv().NUEAKUB_Keys = {} end
+local LIFETIME_KEY = "HACKROBLOX2027"
+local CREATOR_PASS = "2327"
+
+local function ValidateKey(raw)
+    local key = (raw or ""):upper():gsub("%s+","")
+    if key == LIFETIME_KEY then return true end
+    local d = getgenv().NUEAKUB_Keys[key]
+    if d and os.time() < d.expiry then return true end
+    return false
+end
+
+local function GenerateDailyKey()
+    local chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    local function seg(n)
+        local s = ""
+        for i = 1, n do local idx = math.random(1,#chars); s = s..chars:sub(idx,idx) end
+        return s
+    end
+    local key = "NK-"..seg(4).."-"..seg(4)
+    getgenv().NUEAKUB_Keys[key] = {expiry = os.time()+86400}
+    return key
+end
+
+local function FormatTimeLeft(expiry)
+    local s = math.max(0, expiry - os.time())
+    return string.format("%dh %dm", math.floor(s/3600), math.floor((s%3600)/60))
+end
+
+-- ============================================================
+--  PALETTE
+-- ============================================================
+local C = {
+    BG      = Color3.fromRGB(14,14,14),
+    BG2     = Color3.fromRGB(20,20,20),
+    BG3     = Color3.fromRGB(28,28,28),
+    SIDEBAR = Color3.fromRGB(10,10,10),
+    WHITE   = Color3.fromRGB(235,235,235),
+    GREY    = Color3.fromRGB(150,150,150),
+    DIM     = Color3.fromRGB(90,90,90),
+    BORDER  = Color3.fromRGB(45,45,45),
+    OFF     = Color3.fromRGB(35,35,35),
+    GREEN   = Color3.fromRGB(180,255,200),
+    RED     = Color3.fromRGB(255,150,150),
+}
+local RAD = 10
+
+local function Corner(p,r)
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0,r or RAD); c.Parent = p; return c
+end
+local function Stroke(p,t,col,tr)
+    local s = Instance.new("UIStroke"); s.Thickness=t or 1; s.Color=col or C.BORDER
+    s.Transparency=tr or 0; s.ApplyStrokeMode=Enum.ApplyStrokeMode.Border; s.Parent=p; return s
+end
+local function Lbl(p,txt,sz,col,font,xa)
+    local l = Instance.new("TextLabel"); l.BackgroundTransparency=1; l.Text=txt
+    l.TextSize=sz or 12; l.TextColor3=col or C.WHITE; l.Font=font or Enum.Font.Gotham
+    l.TextXAlignment=xa or Enum.TextXAlignment.Left; l.TextWrapped=true; l.Parent=p; return l
+end
+local function Btn(p,txt,sz,col)
+    local b = Instance.new("TextButton"); b.BackgroundColor3=col or C.BG3; b.Text=txt
+    b.TextSize=sz or 12; b.TextColor3=C.WHITE; b.Font=Enum.Font.GothamMedium
+    b.BorderSizePixel=0; b.AutoButtonColor=false; b.Parent=p; return b
+end
+local function Tw(obj,t,props)
+    TweenService:Create(obj, TweenInfo.new(t,Enum.EasingStyle.Quad,Enum.EasingDirection.Out), props):Play()
+end
+
+-- ============================================================
+--  FORWARD DECLARATIONS  ← แก้บั๊กหลัก
+-- ============================================================
+local RunLoad           -- เรียกหลังคีย์ผ่าน
+local LoadBG, LoadCard  -- ต้อง declare ก่อน TrySubmitKey ใช้
+
+-- ============================================================
+--  STATE
+-- ============================================================
+local AntiBanMode = false
+local Features    = {ESP=false, Speed=false, Noclip=false, Spin=false}
+local WalkSpeed   = 30
+local SpinSpeed   = 3
+local SpinAngle   = 0
+local SpinConn, NoclipConn, SpeedConn = nil,nil,nil
+local CurrentPage = "home"
+local ESPConns    = {}
+
+-- ============================================================
+--  KEY ENTRY SCREEN  (ZIndex 300)
+-- ============================================================
+local KeyBG = Instance.new("Frame")
+KeyBG.Size=UDim2.new(1,0,1,0); KeyBG.BackgroundColor3=Color3.fromRGB(6,6,6)
+KeyBG.BackgroundTransparency=0.15; KeyBG.BorderSizePixel=0
+KeyBG.ZIndex=300; KeyBG.Parent=ScreenGui
+
+local KeyCard = Instance.new("Frame")
+KeyCard.Size=UDim2.new(0,280,0,200); KeyCard.Position=UDim2.new(0.5,-140,0.5,-100)
+KeyCard.BackgroundColor3=C.BG2; KeyCard.BorderSizePixel=0
+KeyCard.ZIndex=301; KeyCard.Parent=ScreenGui
+Corner(KeyCard,RAD); Stroke(KeyCard,1,C.BORDER,0)
+
+local kLogo=Lbl(KeyCard,"NUEAKUB",18,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
+kLogo.Size=UDim2.new(1,0,0,24); kLogo.Position=UDim2.new(0,0,0,14); kLogo.ZIndex=302
+
+local kVer=Lbl(KeyCard,"v9.2  —  กรุณาใส่คีย์เพื่อเข้าใช้งาน",9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+kVer.Size=UDim2.new(1,0,0,12); kVer.Position=UDim2.new(0,0,0,40); kVer.ZIndex=302
+
+local kDiv=Instance.new("Frame")
+kDiv.Size=UDim2.new(1,-32,0,1); kDiv.Position=UDim2.new(0,16,0,60)
+kDiv.BackgroundColor3=C.BORDER; kDiv.BorderSizePixel=0; kDiv.ZIndex=302; kDiv.Parent=KeyCard
+
+local kInBG=Instance.new("Frame")
+kInBG.Size=UDim2.new(1,-32,0,36); kInBG.Position=UDim2.new(0,16,0,74)
+kInBG.BackgroundColor3=C.BG3; kInBG.BorderSizePixel=0; kInBG.ZIndex=302; kInBG.Parent=KeyCard
+Corner(kInBG,RAD-3); Stroke(kInBG,1,C.BORDER,0.3)
+
+local kInput=Instance.new("TextBox")
+kInput.Size=UDim2.new(1,-16,1,0); kInput.Position=UDim2.new(0,8,0,0)
+kInput.BackgroundTransparency=1; kInput.Text=""
+kInput.PlaceholderText="ใส่คีย์ที่นี่..."; kInput.PlaceholderColor3=C.DIM
+kInput.TextColor3=C.WHITE; kInput.TextSize=12; kInput.Font=Enum.Font.GothamMedium
+kInput.ClearTextOnFocus=false; kInput.TextXAlignment=Enum.TextXAlignment.Center
+kInput.ZIndex=303; kInput.Parent=kInBG
+
+local kErr=Lbl(KeyCard,"",9,C.RED,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+kErr.Size=UDim2.new(1,-32,0,12); kErr.Position=UDim2.new(0,16,0,116); kErr.ZIndex=302
+
+local kSubmit=Btn(KeyCard,"ยืนยันคีย์",13,C.WHITE)
+kSubmit.TextColor3=Color3.fromRGB(10,10,10)
+kSubmit.Size=UDim2.new(1,-32,0,36); kSubmit.Position=UDim2.new(0,16,1,-48)
+kSubmit.ZIndex=302; Corner(kSubmit,RAD-2)
+kSubmit.MouseEnter:Connect(function() Tw(kSubmit,0.15,{BackgroundColor3=C.GREY}) end)
+kSubmit.MouseLeave:Connect(function() Tw(kSubmit,0.15,{BackgroundColor3=C.WHITE}) end)
+
+-- *** TrySubmitKey ใช้ LoadBG / LoadCard ได้แล้วเพราะ forward declare ไว้ด้านบน ***
+local function TrySubmitKey()
+    if ValidateKey(kInput.Text) then
+        for _,d in pairs(KeyCard:GetDescendants()) do
+            pcall(function()
+                if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+                    Tw(d,0.15,{TextTransparency=1})
+                end
+                Tw(d,0.15,{BackgroundTransparency=1})
+            end)
+        end
+        Tw(KeyCard,0.2,{BackgroundTransparency=1})
+        Tw(KeyBG,0.25,{BackgroundTransparency=1})
+        task.delay(0.35,function()
+            KeyCard:Destroy(); KeyBG:Destroy()
+            LoadBG.Visible   = true   -- ✅ ใช้ได้แล้ว
+            LoadCard.Visible = true   -- ✅ ใช้ได้แล้ว
+            task.spawn(RunLoad)
+        end)
+    else
+        kErr.Text = "❌  คีย์ไม่ถูกต้อง หรือหมดอายุแล้ว"
+        Tw(kInBG,0.1,{BackgroundColor3=Color3.fromRGB(55,18,18)})
+        task.delay(0.35,function() Tw(kInBG,0.3,{BackgroundColor3=C.BG3}) end)
+        task.delay(3,function() if kErr and kErr.Parent then kErr.Text="" end end)
+    end
+end
+
+kSubmit.MouseButton1Click:Connect(TrySubmitKey)
+kInput.FocusLost:Connect(function(enter) if enter then TrySubmitKey() end end)
+
+-- ============================================================
+--  LOADING SCREEN  (ซ่อนจนกว่าคีย์ผ่าน — ใช้ตัวแปรที่ declare ไว้แล้ว)
+-- ============================================================
+LoadBG = Instance.new("Frame")   -- ไม่มี local ← assign ลง forward decl
+LoadBG.Size=UDim2.new(1,0,1,0); LoadBG.BackgroundColor3=Color3.fromRGB(6,6,6)
+LoadBG.BackgroundTransparency=0.4; LoadBG.BorderSizePixel=0
+LoadBG.ZIndex=200; LoadBG.Visible=false; LoadBG.Parent=ScreenGui
+
+LoadCard = Instance.new("Frame")  -- ไม่มี local ← assign ลง forward decl
+LoadCard.Size=UDim2.new(0,220,0,120); LoadCard.Position=UDim2.new(0.5,-110,0.5,-60)
+LoadCard.BackgroundColor3=C.BG2; LoadCard.BackgroundTransparency=0.05
+LoadCard.BorderSizePixel=0; LoadCard.ZIndex=201; LoadCard.Visible=false; LoadCard.Parent=ScreenGui
+Corner(LoadCard,RAD); Stroke(LoadCard,1,C.BORDER,0)
+
+local LoadTitle=Lbl(LoadCard,"NUEAKUB",15,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
+LoadTitle.Size=UDim2.new(1,0,0,20); LoadTitle.Position=UDim2.new(0,0,0,16); LoadTitle.ZIndex=202
+
+local LoadVer=Lbl(LoadCard,"v9.2",9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+LoadVer.Size=UDim2.new(1,0,0,12); LoadVer.Position=UDim2.new(0,0,0,38); LoadVer.ZIndex=202
+
+local LProgTrack=Instance.new("Frame")
+LProgTrack.Size=UDim2.new(1,-32,0,4); LProgTrack.Position=UDim2.new(0,16,0,64)
+LProgTrack.BackgroundColor3=C.OFF; LProgTrack.BorderSizePixel=0; LProgTrack.ZIndex=202; LProgTrack.Parent=LoadCard; Corner(LProgTrack,2)
+
+local LProgFill=Instance.new("Frame")
+LProgFill.Size=UDim2.new(0,0,1,0); LProgFill.BackgroundColor3=C.WHITE
+LProgFill.BorderSizePixel=0; LProgFill.ZIndex=203; LProgFill.Parent=LProgTrack; Corner(LProgFill,2)
+
+local LoadStatus=Lbl(LoadCard,"กำลังเริ่มต้น...",9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+LoadStatus.Size=UDim2.new(1,0,0,12); LoadStatus.Position=UDim2.new(0,0,0,76); LoadStatus.ZIndex=202
+
+local LoadPct=Lbl(LoadCard,"0%",10,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
+LoadPct.Size=UDim2.new(1,0,0,14); LoadPct.Position=UDim2.new(0,0,0,92); LoadPct.ZIndex=202
+
+local loadSteps={
+    {p=0.2,t="กำลังเริ่มต้นระบบ..."},
+    {p=0.45,t="โหลดโมดูล UI..."},
+    {p=0.7,t="ตรวจสอบสิทธิ์..."},
+    {p=0.9,t="เตรียมฟีเจอร์..."},
+    {p=1.0,t="เสร็จสิ้น"},
+}
+
+-- ============================================================
+--  กันแบน PROMPT
+-- ============================================================
+local ABFrame=Instance.new("Frame")
+ABFrame.Size=UDim2.new(0,270,0,150); ABFrame.Position=UDim2.new(0.5,-135,0.5,-75)
+ABFrame.BackgroundColor3=C.BG2; ABFrame.BorderSizePixel=0
+ABFrame.ZIndex=200; ABFrame.Visible=false; ABFrame.Parent=ScreenGui
+Corner(ABFrame,RAD); Stroke(ABFrame,1,C.BORDER,0)
+
+local abTitle=Lbl(ABFrame,"เปิดระบบกันแบนมั้ย?",13,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
+abTitle.Size=UDim2.new(1,-20,0,20); abTitle.Position=UDim2.new(0,10,0,16); abTitle.ZIndex=201
+
+local abSub=Lbl(ABFrame,"จำกัดฟีเจอร์เสี่ยงเพื่อลดโอกาสโดนแบน\nSpeed จำกัดที่ 60 (ไม่รับประกัน 100%)",9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+abSub.Size=UDim2.new(1,-20,0,30); abSub.Position=UDim2.new(0,10,0,40); abSub.ZIndex=201
+
+local abYes=Btn(ABFrame,"เปิดกันแบน",12,C.WHITE)
+abYes.TextColor3=Color3.fromRGB(10,10,10)
+abYes.Size=UDim2.new(0,118,0,32); abYes.Position=UDim2.new(0,12,1,-44); abYes.ZIndex=201; Corner(abYes,RAD)
+
+local abNo=Btn(ABFrame,"ไม่เป็นไร",12,C.OFF)
+abNo.Size=UDim2.new(0,118,0,32); abNo.Position=UDim2.new(1,-130,1,-44); abNo.ZIndex=201; Corner(abNo,RAD); Stroke(abNo,1,C.BORDER,0.3)
+
+-- ============================================================
+--  กันแบน LOADING
+-- ============================================================
+local SLFrame=Instance.new("Frame")
+SLFrame.Size=UDim2.new(0,250,0,110); SLFrame.Position=UDim2.new(0.5,-125,0.5,-55)
+SLFrame.BackgroundColor3=C.BG2; SLFrame.BorderSizePixel=0
+SLFrame.ZIndex=200; SLFrame.Visible=false; SLFrame.Parent=ScreenGui
+Corner(SLFrame,RAD); Stroke(SLFrame,1,C.BORDER,0)
+
+local slTitle=Lbl(SLFrame,"กำลังเปิดระบบกันแบน",12,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
+slTitle.Size=UDim2.new(1,0,0,18); slTitle.Position=UDim2.new(0,0,0,14); slTitle.ZIndex=201
+
+local slTrack=Instance.new("Frame")
+slTrack.Size=UDim2.new(1,-32,0,4); slTrack.Position=UDim2.new(0,16,0,44)
+slTrack.BackgroundColor3=C.OFF; slTrack.BorderSizePixel=0; slTrack.ZIndex=201; slTrack.Parent=SLFrame; Corner(slTrack,2)
+
+local slFill=Instance.new("Frame")
+slFill.Size=UDim2.new(0,0,1,0); slFill.BackgroundColor3=C.WHITE
+slFill.BorderSizePixel=0; slFill.ZIndex=202; slFill.Parent=slTrack; Corner(slFill,2)
+
+local slStatus=Lbl(SLFrame,"กำลังปรับระบบ...",9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+slStatus.Size=UDim2.new(1,0,0,12); slStatus.Position=UDim2.new(0,0,0,54); slStatus.ZIndex=201
+
+local slDone=Lbl(SLFrame,"ระบบกันแบนเปิดแล้ว",10,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
+slDone.Size=UDim2.new(1,0,0,14); slDone.Position=UDim2.new(0,0,0,78); slDone.ZIndex=201; slDone.Visible=false
+
+-- ============================================================
+--  MAIN FRAME  (440 × 320)
+-- ============================================================
+local MainFrame=Instance.new("Frame")
+MainFrame.Size=UDim2.new(0,440,0,320); MainFrame.Position=UDim2.new(0.5,-220,0.5,-160)
+MainFrame.BackgroundColor3=C.BG; MainFrame.BorderSizePixel=0
+MainFrame.Visible=false; MainFrame.ZIndex=10; MainFrame.Parent=ScreenGui
+Corner(MainFrame,RAD); Stroke(MainFrame,1,C.BORDER,0)
+
+local function MakeDraggable(frame,handle)
+    local drag,ds,sp=false,nil,nil
+    handle.InputBegan:Connect(function(inp)
+        if inp.UserInputType==Enum.UserInputType.MouseButton1 then drag=true;ds=inp.Position;sp=frame.Position end
+    end)
+    handle.InputEnded:Connect(function(inp)
+        if inp.UserInputType==Enum.UserInputType.MouseButton1 then drag=false end
+    end)
+    UserInputService.InputChanged:Connect(function(inp)
+        if drag and inp.UserInputType==Enum.UserInputType.MouseMovement then
+            local d=inp.Position-ds
+            frame.Position=UDim2.new(sp.X.Scale,sp.X.Offset+d.X,sp.Y.Scale,sp.Y.Offset+d.Y)
+        end
+    end)
+end
+
+-- SIDEBAR
+local Sidebar=Instance.new("Frame")
+Sidebar.Size=UDim2.new(0,120,1,0); Sidebar.BackgroundColor3=C.SIDEBAR
+Sidebar.BorderSizePixel=0; Sidebar.ZIndex=11; Sidebar.Parent=MainFrame; Corner(Sidebar,RAD)
+
+local SBFix=Instance.new("Frame")
+SBFix.Size=UDim2.new(0,RAD+2,1,0); SBFix.Position=UDim2.new(1,-(RAD+2),0,0)
+SBFix.BackgroundColor3=C.SIDEBAR; SBFix.BorderSizePixel=0; SBFix.ZIndex=11; SBFix.Parent=Sidebar
+
+local LogoName=Lbl(Sidebar,"NUEAKUB",14,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Center)
+LogoName.Size=UDim2.new(1,0,0,20); LogoName.Position=UDim2.new(0,0,0,16); LogoName.ZIndex=12
+
+local LogoVer=Lbl(Sidebar,"v9.2",9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Center)
+LogoVer.Size=UDim2.new(1,0,0,12); LogoVer.Position=UDim2.new(0,0,0,36); LogoVer.ZIndex=12
+
+local SBDiv=Instance.new("Frame")
+SBDiv.Size=UDim2.new(1,-20,0,1); SBDiv.Position=UDim2.new(0,10,0,58)
+SBDiv.BackgroundColor3=C.BORDER; SBDiv.BorderSizePixel=0; SBDiv.ZIndex=12; SBDiv.Parent=Sidebar
+
+local NavItems={
+    {id="home",    label="หน้าหลัก"},
+    {id="player",  label="ผู้เล่น"},
+    {id="key",     label="🔑 KEY"},
+    {id="settings",label="ตั้งค่า"},
+}
+local NavBtns={}
+
+local NavList=Instance.new("Frame")
+NavList.Size=UDim2.new(1,-16,0,140); NavList.Position=UDim2.new(0,8,0,66)
+NavList.BackgroundTransparency=1; NavList.ZIndex=12; NavList.Parent=Sidebar
+local navLL=Instance.new("UIListLayout"); navLL.Padding=UDim.new(0,4); navLL.Parent=NavList
+
+local pageTitles={home="หน้าหลัก",player="ผู้เล่น",key="ระบบคีย์",settings="ตั้งค่า"}
+local PageTitle
+
+local function SetActivePage(id)
+    CurrentPage=id
+    if PageTitle then PageTitle.Text=pageTitles[id] or id end
+    for _,nb in pairs(NavBtns) do
+        if nb.id==id then
+            Tw(nb.btn,0.15,{BackgroundColor3=C.BG3,BackgroundTransparency=0}); nb.lbl.TextColor3=C.WHITE
+        else
+            nb.btn.BackgroundTransparency=1; nb.lbl.TextColor3=C.DIM
+        end
+    end
+    for _,v in pairs(MainFrame:GetDescendants()) do
+        if v.Name:sub(1,5)=="Page_" then v.Visible=(v.Name=="Page_"..id) end
+    end
+end
+
+for _,item in ipairs(NavItems) do
+    local nb=Btn(NavList,"",1,Color3.fromRGB(0,0,0))
+    nb.Size=UDim2.new(1,0,0,32); nb.BackgroundTransparency=1; nb.ZIndex=13; Corner(nb,RAD-3)
+    local nl=Lbl(nb,item.label,11,C.DIM,Enum.Font.GothamMedium,Enum.TextXAlignment.Center)
+    nl.Size=UDim2.new(1,0,1,0); nl.ZIndex=14
+    nb.MouseEnter:Connect(function() if CurrentPage~=item.id then Tw(nb,0.15,{BackgroundTransparency=0.5,BackgroundColor3=C.BG2}) end end)
+    nb.MouseLeave:Connect(function() if CurrentPage~=item.id then nb.BackgroundTransparency=1 end end)
+    nb.MouseButton1Click:Connect(function() SetActivePage(item.id) end)
+    table.insert(NavBtns,{id=item.id,btn=nb,lbl=nl})
+end
+
+-- CONTENT
+local Content=Instance.new("Frame")
+Content.Size=UDim2.new(1,-120,1,0); Content.Position=UDim2.new(0,120,0,0)
+Content.BackgroundColor3=C.BG; Content.BorderSizePixel=0; Content.ZIndex=11; Content.Parent=MainFrame; Corner(Content,RAD)
+
+local CFix=Instance.new("Frame")
+CFix.Size=UDim2.new(0,RAD+2,1,0); CFix.BackgroundColor3=C.BG; CFix.BorderSizePixel=0; CFix.ZIndex=11; CFix.Parent=Content
+
+local TopBar=Instance.new("Frame")
+TopBar.Size=UDim2.new(1,0,0,38); TopBar.BackgroundColor3=C.BG2
+TopBar.BorderSizePixel=0; TopBar.ZIndex=12; TopBar.Parent=Content; Corner(TopBar,RAD)
+
+local TBFix=Instance.new("Frame")
+TBFix.Size=UDim2.new(1,0,0,RAD+2); TBFix.Position=UDim2.new(0,0,1,-(RAD+2))
+TBFix.BackgroundColor3=C.BG2; TBFix.BorderSizePixel=0; TBFix.ZIndex=12; TBFix.Parent=TopBar
+
+MakeDraggable(MainFrame,TopBar)
+
+local TBLine=Instance.new("Frame")
+TBLine.Size=UDim2.new(1,0,0,1); TBLine.Position=UDim2.new(0,0,1,-1)
+TBLine.BackgroundColor3=C.BORDER; TBLine.BorderSizePixel=0; TBLine.ZIndex=13; TBLine.Parent=TopBar
+
+PageTitle=Lbl(TopBar,"หน้าหลัก",13,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Left)
+PageTitle.Size=UDim2.new(1,-70,1,0); PageTitle.Position=UDim2.new(0,12,0,0); PageTitle.ZIndex=13
+
+local ABBadge=Instance.new("Frame")
+ABBadge.Size=UDim2.new(0,60,0,18); ABBadge.Position=UDim2.new(1,-96,0.5,-9)
+ABBadge.BackgroundColor3=C.OFF; ABBadge.BorderSizePixel=0; ABBadge.ZIndex=13; ABBadge.Parent=TopBar; ABBadge.Visible=false; Corner(ABBadge,RAD-4)
+local abbTxt=Lbl(ABBadge,"กันแบน",9,C.GREEN,Enum.Font.GothamMedium,Enum.TextXAlignment.Center)
+abbTxt.Size=UDim2.new(1,0,1,0); abbTxt.ZIndex=14
+
+local CloseBtn=Btn(TopBar,"✕",12,C.BG3)
+CloseBtn.Size=UDim2.new(0,24,0,24); CloseBtn.Position=UDim2.new(1,-32,0.5,-12)
+CloseBtn.TextColor3=C.GREY; CloseBtn.ZIndex=13; Corner(CloseBtn,RAD-4)
+CloseBtn.MouseEnter:Connect(function() Tw(CloseBtn,0.15,{BackgroundColor3=C.RED,TextColor3=Color3.fromRGB(20,20,20)}) end)
+CloseBtn.MouseLeave:Connect(function() Tw(CloseBtn,0.15,{BackgroundColor3=C.BG3,TextColor3=C.GREY}) end)
+
+-- ============================================================
+--  PAGE HOME
+-- ============================================================
+local PageHome=Instance.new("ScrollingFrame")
+PageHome.Name="Page_home"; PageHome.Size=UDim2.new(1,0,1,-38); PageHome.Position=UDim2.new(0,0,0,38)
+PageHome.BackgroundTransparency=1; PageHome.BorderSizePixel=0; PageHome.ScrollBarThickness=2
+PageHome.ScrollBarImageColor3=C.BORDER; PageHome.CanvasSize=UDim2.new(0,0,0,480); PageHome.ZIndex=12; PageHome.Parent=Content
+local homeLL=Instance.new("UIListLayout"); homeLL.Padding=UDim.new(0,6); homeLL.Parent=PageHome
+local homePad=Instance.new("UIPadding"); homePad.PaddingTop=UDim.new(0,10); homePad.PaddingLeft=UDim.new(0,10); homePad.PaddingRight=UDim.new(0,10); homePad.PaddingBottom=UDim.new(0,10); homePad.Parent=PageHome
+
+local Banner=Instance.new("Frame"); Banner.Size=UDim2.new(1,0,0,48); Banner.BackgroundColor3=C.BG2; Banner.BorderSizePixel=0; Banner.ZIndex=13; Banner.Parent=PageHome; Corner(Banner,RAD-2); Stroke(Banner,1,C.BORDER,0.3)
+local banTitle=Lbl(Banner,"อัพเดทล่าสุด — v9.2",12,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Left); banTitle.Size=UDim2.new(1,-20,0,18); banTitle.Position=UDim2.new(0,12,0,6); banTitle.ZIndex=14
+local banSub=Lbl(Banner,"แก้บั๊กหน้าโหลด • ระบบคีย์ • กันแบน • Spin",10,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Left); banSub.Size=UDim2.new(1,-20,0,16); banSub.Position=UDim2.new(0,12,0,26); banSub.ZIndex=14
+
+local changelog={
+    {t="v9.2 แก้บั๊ก: หน้าโหลดไม่ขึ้นหลังใส่คีย์",d="ใหม่"},
+    {t="เพิ่มระบบคีย์ (Lifetime + 24h)",           d="v9.1"},
+    {t="หน้าสร้างคีย์สำหรับผู้สร้าง (แถบ KEY)",    d="v9.1"},
+    {t="เปลี่ยนชื่อ Safe Mode เป็น กันแบน",        d="v9.1"},
+    {t="หน้าโหลดเล็กลง โปร่งแสงเห็นเกม",           d="v9.1"},
+    {t="ปรับความเร็วหมุน (Spin) ได้แล้ว",          d="v9.1"},
+    {t="Speed slider ปรับได้ 1–100",              d="v9.0"},
+    {t="ESP ผู้เล่น แสดงชื่อและกล่อง",             d="v9.0"},
+    {t="Noclip ทะลุกำแพง",                        d="v9.0"},
+}
+for _,entry in ipairs(changelog) do
+    local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,32); row.BackgroundColor3=C.BG2; row.BorderSizePixel=0; row.ZIndex=13; row.Parent=PageHome; Corner(row,RAD-3)
+    local rt=Lbl(row,entry.t,11,C.WHITE,Enum.Font.GothamMedium,Enum.TextXAlignment.Left); rt.Size=UDim2.new(1,-70,0,16); rt.Position=UDim2.new(0,10,0,8); rt.ZIndex=14
+    local rd=Lbl(row,entry.d,9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Right); rd.Size=UDim2.new(0,60,0,14); rd.Position=UDim2.new(1,-66,0,9); rd.ZIndex=14
+    if entry.d=="ใหม่" then rd.TextColor3=C.GREEN end
+end
+
+-- ============================================================
+--  PAGE PLAYER
+-- ============================================================
+local PagePlayer=Instance.new("ScrollingFrame")
+PagePlayer.Name="Page_player"; PagePlayer.Size=UDim2.new(1,0,1,-38); PagePlayer.Position=UDim2.new(0,0,0,38)
+PagePlayer.BackgroundTransparency=1; PagePlayer.BorderSizePixel=0; PagePlayer.ScrollBarThickness=2
+PagePlayer.ScrollBarImageColor3=C.BORDER; PagePlayer.CanvasSize=UDim2.new(0,0,0,500); PagePlayer.ZIndex=12; PagePlayer.Visible=false; PagePlayer.Parent=Content
+local playerLL=Instance.new("UIListLayout"); playerLL.Padding=UDim.new(0,6); playerLL.Parent=PagePlayer
+local playerPad=Instance.new("UIPadding"); playerPad.PaddingTop=UDim.new(0,10); playerPad.PaddingLeft=UDim.new(0,10); playerPad.PaddingRight=UDim.new(0,10); playerPad.PaddingBottom=UDim.new(0,10); playerPad.Parent=PagePlayer
+
+local function MakeToggleCard(parent,label,sub,onToggle)
+    local card=Instance.new("Frame"); card.Size=UDim2.new(1,0,0,44); card.BackgroundColor3=C.BG2; card.BorderSizePixel=0; card.ZIndex=13; card.Parent=parent; Corner(card,RAD-2); Stroke(card,1,C.BORDER,0.4)
+    local mainL=Lbl(card,label,11,C.WHITE,Enum.Font.GothamMedium,Enum.TextXAlignment.Left); mainL.Size=UDim2.new(0.6,0,0,16); mainL.Position=UDim2.new(0,12,0,6); mainL.ZIndex=14
+    local subL=Lbl(card,sub,9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Left); subL.Size=UDim2.new(0.6,0,0,12); subL.Position=UDim2.new(0,12,0,24); subL.ZIndex=14
+    local sw=Instance.new("Frame"); sw.Size=UDim2.new(0,42,0,22); sw.Position=UDim2.new(1,-52,0.5,-11); sw.BackgroundColor3=C.OFF; sw.BorderSizePixel=0; sw.ZIndex=14; sw.Parent=card; Corner(sw,11); Stroke(sw,1,C.BORDER,0.3)
+    local knob=Instance.new("Frame"); knob.Size=UDim2.new(0,16,0,16); knob.Position=UDim2.new(0,3,0.5,-8); knob.BackgroundColor3=C.GREY; knob.BorderSizePixel=0; knob.ZIndex=15; knob.Parent=sw; Corner(knob,8)
+    local active=false
+    local hit=Btn(sw,"",1,Color3.fromRGB(0,0,0)); hit.BackgroundTransparency=1; hit.Size=UDim2.new(1,0,1,0); hit.ZIndex=16; hit.Parent=sw
+    hit.MouseButton1Click:Connect(function()
+        active=not active
+        if active then
+            Tw(knob,0.18,{Position=UDim2.new(1,-19,0.5,-8),BackgroundColor3=C.WHITE})
+            Tw(sw,0.18,{BackgroundColor3=C.BG3})
+            Tw(sw:FindFirstChildOfClass("UIStroke"),0.18,{Color=C.WHITE,Transparency=0})
+        else
+            Tw(knob,0.18,{Position=UDim2.new(0,3,0.5,-8),BackgroundColor3=C.GREY})
+            Tw(sw,0.18,{BackgroundColor3=C.OFF})
+            Tw(sw:FindFirstChildOfClass("UIStroke"),0.18,{Color=C.BORDER,Transparency=0.3})
+        end
+        onToggle(active)
+    end)
+    card.MouseEnter:Connect(function() Tw(card,0.15,{BackgroundColor3=C.BG3}) end)
+    card.MouseLeave:Connect(function() Tw(card,0.15,{BackgroundColor3=C.BG2}) end)
+    return card
+end
+
+local function MakeSliderCard(parent,label,minV,maxV,defV,onChange)
+    local card=Instance.new("Frame"); card.Size=UDim2.new(1,0,0,58); card.BackgroundColor3=C.BG2; card.BorderSizePixel=0; card.ZIndex=13; card.Parent=parent; Corner(card,RAD-2); Stroke(card,1,C.BORDER,0.4)
+    local mainL=Lbl(card,label,11,C.WHITE,Enum.Font.GothamMedium,Enum.TextXAlignment.Left); mainL.Size=UDim2.new(0.6,0,0,16); mainL.Position=UDim2.new(0,12,0,6); mainL.ZIndex=14
+    local valL=Lbl(card,tostring(defV),11,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Right); valL.Size=UDim2.new(0,50,0,16); valL.Position=UDim2.new(1,-58,0,6); valL.ZIndex=14
+    local track=Instance.new("Frame"); track.Size=UDim2.new(1,-24,0,4); track.Position=UDim2.new(0,12,0,38); track.BackgroundColor3=C.OFF; track.BorderSizePixel=0; track.ZIndex=14; track.Parent=card; Corner(track,2)
+    local rel0=(defV-minV)/(maxV-minV)
+    local fill=Instance.new("Frame"); fill.Size=UDim2.new(rel0,0,1,0); fill.BackgroundColor3=C.WHITE; fill.BorderSizePixel=0; fill.ZIndex=15; fill.Parent=track; Corner(fill,2)
+    local sk=Instance.new("Frame"); sk.Size=UDim2.new(0,12,0,12); sk.Position=UDim2.new(rel0,-6,0.5,-6); sk.BackgroundColor3=C.WHITE; sk.BorderSizePixel=0; sk.ZIndex=16; sk.Parent=track; Corner(sk,6)
+    local dragging=false
+    local shb=Btn(track,"",1,Color3.fromRGB(0,0,0)); shb.BackgroundTransparency=1; shb.Size=UDim2.new(1,0,1,10); shb.Position=UDim2.new(0,0,0,-5); shb.ZIndex=17; shb.Parent=track
+    local function upd(x)
+        local rel=math.clamp((x-track.AbsolutePosition.X)/track.AbsoluteSize.X,0,1)
+        fill.Size=UDim2.new(rel,0,1,0); sk.Position=UDim2.new(rel,-6,0.5,-6)
+        local v=math.round(minV+rel*(maxV-minV)); valL.Text=tostring(v); onChange(v)
+    end
+    shb.MouseButton1Down:Connect(function() dragging=true; upd(UserInputService:GetMouseLocation().X) end)
+    shb.MouseButton1Up:Connect(function() dragging=false end)
+    UserInputService.InputEnded:Connect(function(inp) if inp.UserInputType==Enum.UserInputType.MouseButton1 then dragging=false end end)
+    UserInputService.InputChanged:Connect(function(inp) if dragging and inp.UserInputType==Enum.UserInputType.MouseMovement then upd(inp.Position.X) end end)
+end
+
+MakeToggleCard(PagePlayer,"ESP ผู้เล่น","แสดงกล่องและชื่อศัตรู",function(on)
+    Features.ESP=on
+    if on then
+        local function makeBox(char,plr)
+            local old=char:FindFirstChild("N_ESP"); if old then old:Destroy() end
+            local hl=Instance.new("SelectionBox"); hl.Name="N_ESP"; hl.Adornee=char; hl.Color3=C.WHITE; hl.LineThickness=0.05; hl.SurfaceTransparency=0.85; hl.Parent=char
+            local bg=Instance.new("BillboardGui"); bg.Name="N_ESP_LBL"; bg.Size=UDim2.new(0,90,0,26); bg.AlwaysOnTop=true; bg.StudsOffset=Vector3.new(0,3,0); bg.Adornee=char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head"); bg.Parent=char
+            local f=Instance.new("Frame"); f.Size=UDim2.new(1,0,1,0); f.BackgroundColor3=Color3.fromRGB(10,10,10); f.BackgroundTransparency=0.2; f.BorderSizePixel=0; f.Parent=bg; Corner(f,4)
+            local nl=Lbl(f,plr.Name,10,C.WHITE,Enum.Font.GothamMedium,Enum.TextXAlignment.Center); nl.Size=UDim2.new(1,0,1,0)
+        end
+        for _,plr in pairs(Players:GetPlayers()) do
+            if plr~=LocalPlayer then
+                if plr.Character then makeBox(plr.Character,plr) end
+                ESPConns[plr]=plr.CharacterAdded:Connect(function(char) task.wait(0.5); if Features.ESP then makeBox(char,plr) end end)
+            end
+        end
+        ESPConns["add"]=Players.PlayerAdded:Connect(function(plr)
+            ESPConns[plr]=plr.CharacterAdded:Connect(function(char) task.wait(0.5); if Features.ESP then makeBox(char,plr) end end)
+        end)
+    else
+        for _,plr in pairs(Players:GetPlayers()) do
+            if plr~=LocalPlayer and plr.Character then
+                local h=plr.Character:FindFirstChild("N_ESP"); if h then h:Destroy() end
+                local b=plr.Character:FindFirstChild("N_ESP_LBL"); if b then b:Destroy() end
+            end
+        end
+        for k,c in pairs(ESPConns) do if typeof(c)=="RBXScriptConnection" then c:Disconnect() end; ESPConns[k]=nil end
+    end
+end)
+
+MakeToggleCard(PagePlayer,"Noclip","ทะลุกำแพงได้",function(on)
+    Features.Noclip=on
+    if on then
+        if NoclipConn then NoclipConn:Disconnect() end
+        NoclipConn=RunService.Stepped:Connect(function()
+            local char=LocalPlayer.Character; if not char then return end
+            for _,p in pairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=false end end
+        end)
+    else
+        if NoclipConn then NoclipConn:Disconnect(); NoclipConn=nil end
+        local char=LocalPlayer.Character; if not char then return end
+        for _,p in pairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide=true end end
+    end
+end)
+
+MakeSliderCard(PagePlayer,"ความเร็ว (WalkSpeed)",1,100,16,function(v)
+    WalkSpeed=v
+    if Features.Speed then
+        local char=LocalPlayer.Character; if not char then return end
+        local hum=char:FindFirstChildOfClass("Humanoid"); if hum then hum.WalkSpeed=v end
+    end
+end)
+
+MakeToggleCard(PagePlayer,"วิ่งเร็ว","ใช้ค่า Speed slider ด้านบน",function(on)
+    Features.Speed=on
+    if on then
+        if SpeedConn then SpeedConn:Disconnect() end
+        local function applySpd()
+            local char=LocalPlayer.Character; if not char then return end
+            local hum=char:FindFirstChildOfClass("Humanoid"); if hum then hum.WalkSpeed=WalkSpeed end
+        end
+        applySpd()
+        SpeedConn=RunService.Heartbeat:Connect(function()
+            local char=LocalPlayer.Character; if not char then return end
+            local hum=char:FindFirstChildOfClass("Humanoid"); if not hum then return end
+            if hum.WalkSpeed~=WalkSpeed then hum.WalkSpeed=WalkSpeed end
+        end)
+    else
+        if SpeedConn then SpeedConn:Disconnect(); SpeedConn=nil end
+        local char=LocalPlayer.Character; if not char then return end
+        local hum=char:FindFirstChildOfClass("Humanoid"); if hum then hum.WalkSpeed=16 end
+    end
+end)
+
+MakeSliderCard(PagePlayer,"ความเร็วหมุน (Spin)",1,20,3,function(v) SpinSpeed=v end)
+
+MakeToggleCard(PagePlayer,"Spin 360°","ใช้ค่า Spin slider ด้านบน",function(on)
+    Features.Spin=on
+    if on then
+        if SpinConn then SpinConn:Disconnect() end
+        SpinConn=RunService.Heartbeat:Connect(function(dt)
+            local char=LocalPlayer.Character; if not char then return end
+            local root=char:FindFirstChild("HumanoidRootPart")
+            local hum=char:FindFirstChildOfClass("Humanoid")
+            if not root or not hum then return end
+            if hum.FloorMaterial==Enum.Material.Air then return end
+            SpinAngle=(SpinAngle+SpinSpeed*dt*60)%360
+            root.CFrame=CFrame.new(root.Position)*CFrame.Angles(0,math.rad(SpinAngle),0)
+        end)
+    else
+        if SpinConn then SpinConn:Disconnect(); SpinConn=nil end
+    end
+end)
+
+-- ============================================================
+--  PAGE KEY  (Creator Panel)
+-- ============================================================
+local PageKey=Instance.new("ScrollingFrame")
+PageKey.Name="Page_key"; PageKey.Size=UDim2.new(1,0,1,-38); PageKey.Position=UDim2.new(0,0,0,38)
+PageKey.BackgroundTransparency=1; PageKey.BorderSizePixel=0; PageKey.ScrollBarThickness=2
+PageKey.ScrollBarImageColor3=C.BORDER; PageKey.CanvasSize=UDim2.new(0,0,0,420); PageKey.ZIndex=12; PageKey.Visible=false; PageKey.Parent=Content
+local keyPageLL=Instance.new("UIListLayout"); keyPageLL.Padding=UDim.new(0,8); keyPageLL.Parent=PageKey
+local keyPagePad=Instance.new("UIPadding"); keyPagePad.PaddingTop=UDim.new(0,10); keyPagePad.PaddingLeft=UDim.new(0,10); keyPagePad.PaddingRight=UDim.new(0,10); keyPagePad.PaddingBottom=UDim.new(0,10); keyPagePad.Parent=PageKey
+
+local lockSection=Instance.new("Frame"); lockSection.Size=UDim2.new(1,0,0,170); lockSection.BackgroundColor3=C.BG2; lockSection.BorderSizePixel=0; lockSection.ZIndex=13; lockSection.Parent=PageKey; Corner(lockSection,RAD-2); Stroke(lockSection,1,C.BORDER,0.4)
+local lockIcon=Lbl(lockSection,"🔐",22,C.WHITE,Enum.Font.Gotham,Enum.TextXAlignment.Center); lockIcon.Size=UDim2.new(1,0,0,28); lockIcon.Position=UDim2.new(0,0,0,10); lockIcon.ZIndex=14
+local lockTitle=Lbl(lockSection,"ตรวจสอบว่าคุณคือผู้สร้าง",12,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Center); lockTitle.Size=UDim2.new(1,0,0,16); lockTitle.Position=UDim2.new(0,0,0,44); lockTitle.ZIndex=14
+local lockSub=Lbl(lockSection,"ใส่รหัสผู้สร้างเพื่อสร้างคีย์ 24 ชั่วโมง",9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Center); lockSub.Size=UDim2.new(1,-20,0,14); lockSub.Position=UDim2.new(0,10,0,64); lockSub.ZIndex=14
+
+local creatorInBG=Instance.new("Frame"); creatorInBG.Size=UDim2.new(1,-32,0,30); creatorInBG.Position=UDim2.new(0,16,0,88); creatorInBG.BackgroundColor3=C.BG3; creatorInBG.BorderSizePixel=0; creatorInBG.ZIndex=14; creatorInBG.Parent=lockSection; Corner(creatorInBG,RAD-4); Stroke(creatorInBG,1,C.BORDER,0.3)
+local creatorInput=Instance.new("TextBox"); creatorInput.Size=UDim2.new(1,-12,1,0); creatorInput.Position=UDim2.new(0,6,0,0); creatorInput.BackgroundTransparency=1; creatorInput.Text=""; creatorInput.PlaceholderText="รหัสผู้สร้าง..."; creatorInput.PlaceholderColor3=C.DIM; creatorInput.TextColor3=C.WHITE; creatorInput.TextSize=11; creatorInput.Font=Enum.Font.GothamMedium; creatorInput.ClearTextOnFocus=false; creatorInput.TextXAlignment=Enum.TextXAlignment.Center; creatorInput.ZIndex=15; creatorInput.Parent=creatorInBG
+
+local creatorErrLbl=Lbl(lockSection,"",9,C.RED,Enum.Font.Gotham,Enum.TextXAlignment.Center); creatorErrLbl.Size=UDim2.new(1,-32,0,12); creatorErrLbl.Position=UDim2.new(0,16,0,124); creatorErrLbl.ZIndex=14
+local creatorVerifyBtn=Btn(lockSection,"ยืนยัน",11,C.BG3); creatorVerifyBtn.Size=UDim2.new(1,-32,0,28); creatorVerifyBtn.Position=UDim2.new(0,16,1,-36); creatorVerifyBtn.ZIndex=14; Corner(creatorVerifyBtn,RAD-4); Stroke(creatorVerifyBtn,1,C.BORDER,0.3)
+creatorVerifyBtn.MouseEnter:Connect(function() Tw(creatorVerifyBtn,0.15,{BackgroundColor3=C.BG2}) end)
+creatorVerifyBtn.MouseLeave:Connect(function() Tw(creatorVerifyBtn,0.15,{BackgroundColor3=C.BG3}) end)
+
+local genSection=Instance.new("Frame"); genSection.Size=UDim2.new(1,0,0,88); genSection.BackgroundColor3=C.BG2; genSection.BorderSizePixel=0; genSection.ZIndex=13; genSection.Visible=false; genSection.Parent=PageKey; Corner(genSection,RAD-2); Stroke(genSection,1,C.BORDER,0.4)
+local genTitle=Lbl(genSection,"สร้างคีย์ 24 ชั่วโมง",12,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Left); genTitle.Size=UDim2.new(1,-20,0,16); genTitle.Position=UDim2.new(0,12,0,10); genTitle.ZIndex=14
+local genSub=Lbl(genSection,"คีย์ที่สร้างจะหมดอายุใน 24 ชม. นับจากเวลาที่สร้าง",9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Left); genSub.Size=UDim2.new(1,-20,0,12); genSub.Position=UDim2.new(0,12,0,28); genSub.ZIndex=14
+local genBtn=Btn(genSection,"⊕  สร้างคีย์ใหม่",12,C.WHITE); genBtn.TextColor3=Color3.fromRGB(10,10,10); genBtn.Size=UDim2.new(1,-24,0,30); genBtn.Position=UDim2.new(0,12,1,-38); genBtn.ZIndex=14; Corner(genBtn,RAD-4)
+genBtn.MouseEnter:Connect(function() Tw(genBtn,0.15,{BackgroundColor3=C.GREY}) end)
+genBtn.MouseLeave:Connect(function() Tw(genBtn,0.15,{BackgroundColor3=C.WHITE}) end)
+
+local keyDispSection=Instance.new("Frame"); keyDispSection.Size=UDim2.new(1,0,0,66); keyDispSection.BackgroundColor3=C.BG2; keyDispSection.BorderSizePixel=0; keyDispSection.ZIndex=13; keyDispSection.Visible=false; keyDispSection.Parent=PageKey; Corner(keyDispSection,RAD-2); Stroke(keyDispSection,1,C.GREEN,0.45)
+local keyDispKey=Lbl(keyDispSection,"NK-XXXX-XXXX",15,C.GREEN,Enum.Font.GothamBold,Enum.TextXAlignment.Center); keyDispKey.Size=UDim2.new(1,0,0,22); keyDispKey.Position=UDim2.new(0,0,0,6); keyDispKey.ZIndex=14
+local keyDispTime=Lbl(keyDispSection,"ใช้ได้: 24 ชั่วโมง",9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Center); keyDispTime.Size=UDim2.new(1,0,0,12); keyDispTime.Position=UDim2.new(0,0,0,28); keyDispTime.ZIndex=14
+local copyBtn=Btn(keyDispSection,"📋  คัดลอกคีย์",10,C.BG3); copyBtn.Size=UDim2.new(1,-24,0,22); copyBtn.Position=UDim2.new(0,12,1,-28); copyBtn.ZIndex=14; Corner(copyBtn,RAD-5); Stroke(copyBtn,1,C.BORDER,0.3)
+copyBtn.MouseEnter:Connect(function() Tw(copyBtn,0.15,{BackgroundColor3=C.BG2}) end)
+copyBtn.MouseLeave:Connect(function() Tw(copyBtn,0.15,{BackgroundColor3=C.BG3}) end)
+
+local keysHeader=Instance.new("Frame"); keysHeader.Size=UDim2.new(1,0,0,28); keysHeader.BackgroundColor3=C.BG2; keysHeader.BorderSizePixel=0; keysHeader.ZIndex=13; keysHeader.Visible=false; keysHeader.Parent=PageKey; Corner(keysHeader,RAD-4)
+local keysHeaderLbl=Lbl(keysHeader,"คีย์ที่ใช้งานได้",11,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Left); keysHeaderLbl.Size=UDim2.new(0.7,0,1,0); keysHeaderLbl.Position=UDim2.new(0,12,0,0); keysHeaderLbl.ZIndex=14
+local keysCountLbl=Lbl(keysHeader,"",10,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Right); keysCountLbl.Size=UDim2.new(0.28,0,1,0); keysCountLbl.Position=UDim2.new(0.7,0,0,0); keysCountLbl.ZIndex=14
+
+local keysListFrame=Instance.new("Frame"); keysListFrame.Size=UDim2.new(1,0,0,10); keysListFrame.BackgroundTransparency=1; keysListFrame.ZIndex=13; keysListFrame.Visible=false; keysListFrame.Parent=PageKey
+local keysListLL=Instance.new("UIListLayout"); keysListLL.Padding=UDim.new(0,4); keysListLL.Parent=keysListFrame
+keysListLL:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    keysListFrame.Size=UDim2.new(1,0,0,keysListLL.AbsoluteContentSize.Y)
+end)
+
+local currentGenKey=""
+
+local function RefreshKeysList()
+    for _,child in pairs(keysListFrame:GetChildren()) do if child:IsA("Frame") then child:Destroy() end end
+    local count=0
+    for k,data in pairs(getgenv().NUEAKUB_Keys) do
+        if os.time()<data.expiry then
+            count=count+1
+            local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,32); row.BackgroundColor3=C.BG2; row.BorderSizePixel=0; row.ZIndex=14; row.Parent=keysListFrame; Corner(row,RAD-4)
+            local kl=Lbl(row,k,10,C.WHITE,Enum.Font.GothamMedium,Enum.TextXAlignment.Left); kl.Size=UDim2.new(0.62,0,1,0); kl.Position=UDim2.new(0,8,0,0); kl.ZIndex=15
+            local tl=Lbl(row,FormatTimeLeft(data.expiry),9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Right); tl.Size=UDim2.new(0.34,0,1,0); tl.Position=UDim2.new(0.64,0,0,0); tl.ZIndex=15
+        end
+    end
+    keysCountLbl.Text=tostring(count).." คีย์"
+    PageKey.CanvasSize=UDim2.new(0,0,0,math.max(420,count*36+360))
+end
+
+genBtn.MouseButton1Click:Connect(function()
+    local newKey=GenerateDailyKey()
+    currentGenKey=newKey; keyDispKey.Text=newKey; keyDispTime.Text="ใช้ได้: 24 ชั่วโมง"
+    keyDispSection.Visible=true; keysHeader.Visible=true; keysListFrame.Visible=true
+    RefreshKeysList()
+end)
+
+copyBtn.MouseButton1Click:Connect(function()
+    if currentGenKey~="" then
+        pcall(function() setclipboard(currentGenKey) end)
+        local oldTxt=copyBtn.Text
+        copyBtn.Text="✓  คัดลอกแล้ว!"; copyBtn.TextColor3=C.GREEN
+        task.delay(1.5,function()
+            if copyBtn and copyBtn.Parent then copyBtn.Text=oldTxt; copyBtn.TextColor3=C.WHITE end
+        end)
+    end
+end)
+
+local function DoCreatorVerify()
+    if creatorInput.Text==CREATOR_PASS then
+        lockSection.Visible=false; genSection.Visible=true
+        if next(getgenv().NUEAKUB_Keys)~=nil then
+            keysHeader.Visible=true; keysListFrame.Visible=true; RefreshKeysList()
+        end
+    else
+        creatorErrLbl.Text="❌  รหัสไม่ถูกต้อง"
+        Tw(creatorInBG,0.1,{BackgroundColor3=Color3.fromRGB(55,18,18)})
+        task.delay(0.35,function() Tw(creatorInBG,0.3,{BackgroundColor3=C.BG3}) end)
+        task.delay(2.5,function() if creatorErrLbl and creatorErrLbl.Parent then creatorErrLbl.Text="" end end)
+    end
+end
+creatorVerifyBtn.MouseButton1Click:Connect(DoCreatorVerify)
+creatorInput.FocusLost:Connect(function(enter) if enter then DoCreatorVerify() end end)
+
+-- ============================================================
+--  PAGE SETTINGS
+-- ============================================================
+local PageSettings=Instance.new("Frame"); PageSettings.Name="Page_settings"; PageSettings.Size=UDim2.new(1,0,1,-38); PageSettings.Position=UDim2.new(0,0,0,38); PageSettings.BackgroundTransparency=1; PageSettings.ZIndex=12; PageSettings.Visible=false; PageSettings.Parent=Content
+local setLL=Instance.new("UIListLayout"); setLL.Padding=UDim.new(0,6); setLL.Parent=PageSettings
+local setPad=Instance.new("UIPadding"); setPad.PaddingTop=UDim.new(0,10); setPad.PaddingLeft=UDim.new(0,10); setPad.PaddingRight=UDim.new(0,10); setPad.Parent=PageSettings
+
+local function InfoRow(parent,lbl,sub)
+    local row=Instance.new("Frame"); row.Size=UDim2.new(1,0,0,42); row.BackgroundColor3=C.BG2; row.BorderSizePixel=0; row.ZIndex=13; row.Parent=parent; Corner(row,RAD-2); Stroke(row,1,C.BORDER,0.4)
+    local tl=Lbl(row,lbl,11,C.WHITE,Enum.Font.GothamMedium,Enum.TextXAlignment.Left); tl.Size=UDim2.new(1,-20,0,16); tl.Position=UDim2.new(0,12,0,6); tl.ZIndex=14
+    local sl=Lbl(row,sub,9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Left); sl.Size=UDim2.new(1,-20,0,12); sl.Position=UDim2.new(0,12,0,24); sl.ZIndex=14
+    return row
+end
+InfoRow(PageSettings,"NUEAKUB Hub v9.2","Delta / Codex compatible + Key System")
+local abModeRow=InfoRow(PageSettings,"กันแบน","เปิดตอนโหลดสคริปเพื่อจำกัดความเสี่ยง")
+local abLbl=Lbl(abModeRow,"ปิด",10,C.DIM,Enum.Font.GothamMedium,Enum.TextXAlignment.Right); abLbl.Size=UDim2.new(0,40,0,14); abLbl.Position=UDim2.new(1,-48,0,14); abLbl.ZIndex=14
+InfoRow(PageSettings,"RightShift","กดเพื่อเปิด/ปิดเมนู")
+InfoRow(PageSettings,"ระบบคีย์","Lifetime: HACKROBLOX2027 | 24h: แถบ KEY")
+
+-- ============================================================
+--  FLOATING TOGGLE BUTTON
+-- ============================================================
+local ToggleBtn=Btn(ScreenGui,"",1,C.BG2); ToggleBtn.Size=UDim2.new(0,50,0,50); ToggleBtn.Position=UDim2.new(0,12,0,12); ToggleBtn.Visible=false; ToggleBtn.ZIndex=50; Corner(ToggleBtn,RAD)
+local tbStroke=Stroke(ToggleBtn,1,C.BORDER,0)
+local tbIcon=Lbl(ToggleBtn,"N",16,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Center); tbIcon.Size=UDim2.new(1,0,0,18); tbIcon.Position=UDim2.new(0,0,0,4); tbIcon.ZIndex=51
+
+local FPSLabel=Instance.new("TextLabel"); FPSLabel.Size=UDim2.new(1,0,0,14); FPSLabel.Position=UDim2.new(0,0,0,30); FPSLabel.BackgroundTransparency=1; FPSLabel.Text="--"; FPSLabel.TextColor3=C.GREY; FPSLabel.TextSize=11; FPSLabel.Font=Enum.Font.GothamBold; FPSLabel.TextXAlignment=Enum.TextXAlignment.Center; FPSLabel.ZIndex=51; FPSLabel.Parent=ToggleBtn
+
+local fpsSamples,fpsTimer={},0
+RunService.Heartbeat:Connect(function(dt)
+    if not ToggleBtn.Visible then return end
+    table.insert(fpsSamples,dt); if #fpsSamples>30 then table.remove(fpsSamples,1) end
+    fpsTimer=fpsTimer+dt
+    if fpsTimer>=0.25 then
+        fpsTimer=0; local sum=0; for _,v in ipairs(fpsSamples) do sum=sum+v end
+        local fps=math.round(1/(sum/#fpsSamples)); FPSLabel.Text=tostring(fps)
+        if fps>=50 then FPSLabel.TextColor3=C.WHITE elseif fps>=30 then FPSLabel.TextColor3=C.GREY else FPSLabel.TextColor3=C.RED end
+    end
+end)
+
+ToggleBtn.MouseEnter:Connect(function() Tw(ToggleBtn,0.15,{BackgroundColor3=C.BG3}); Tw(tbStroke,0.15,{Transparency=0,Color=C.WHITE}) end)
+ToggleBtn.MouseLeave:Connect(function() Tw(ToggleBtn,0.15,{BackgroundColor3=C.BG2}); Tw(tbStroke,0.15,{Transparency=0,Color=C.BORDER}) end)
+
+local menuOpen=false
+local function SetMenu(open)
+    menuOpen=open
+    if open then
+        MainFrame.Visible=true; MainFrame.Size=UDim2.new(0,0,0,0); MainFrame.Position=UDim2.new(0.5,0,0.5,0)
+        Tw(MainFrame,0.3,{Size=UDim2.new(0,440,0,320),Position=UDim2.new(0.5,-220,0.5,-160)})
+    else
+        Tw(MainFrame,0.22,{Size=UDim2.new(0,0,0,0),Position=UDim2.new(0.5,0,0.5,0)})
+        task.delay(0.23,function() MainFrame.Visible=false end)
+    end
+end
+
+ToggleBtn.MouseButton1Click:Connect(function() SetMenu(not menuOpen) end)
+CloseBtn.MouseButton1Click:Connect(function() SetMenu(false) end)
+UserInputService.InputBegan:Connect(function(inp,gp)
+    if gp then return end
+    if inp.KeyCode==Enum.KeyCode.RightShift and ToggleBtn.Visible then SetMenu(not menuOpen) end
+end)
+
+-- ============================================================
+--  NOTIFICATION
+-- ============================================================
+local NotifCont=Instance.new("Frame"); NotifCont.Size=UDim2.new(0,220,1,0); NotifCont.Position=UDim2.new(1,-232,0,0); NotifCont.BackgroundTransparency=1; NotifCont.ZIndex=100; NotifCont.Parent=ScreenGui
+local nLL=Instance.new("UIListLayout"); nLL.VerticalAlignment=Enum.VerticalAlignment.Bottom; nLL.Padding=UDim.new(0,6); nLL.Parent=NotifCont
+
+local function Notify(title,msg)
+    local nf=Instance.new("Frame"); nf.Size=UDim2.new(1,0,0,0); nf.BackgroundColor3=C.BG2; nf.BorderSizePixel=0; nf.ClipsDescendants=true; nf.ZIndex=100; nf.Parent=NotifCont; Corner(nf,RAD-2); Stroke(nf,1,C.BORDER,0.3)
+    local tl=Lbl(nf,title,11,C.WHITE,Enum.Font.GothamBold,Enum.TextXAlignment.Left); tl.Size=UDim2.new(1,-16,0,16); tl.Position=UDim2.new(0,10,0,6); tl.ZIndex=101
+    local ml=Lbl(nf,msg,9,C.DIM,Enum.Font.Gotham,Enum.TextXAlignment.Left); ml.Size=UDim2.new(1,-16,0,12); ml.Position=UDim2.new(0,10,0,22); ml.ZIndex=101
+    TweenService:Create(nf,TweenInfo.new(0.25,Enum.EasingStyle.Quad,Enum.EasingDirection.Out),{Size=UDim2.new(1,0,0,40)}):Play()
+    task.delay(2.5,function()
+        local out=TweenService:Create(nf,TweenInfo.new(0.2),{Size=UDim2.new(1,0,0,0),BackgroundTransparency=1})
+        out:Play(); out.Completed:Connect(function() nf:Destroy() end)
+    end)
+end
+
+-- ============================================================
+--  RUN LOAD  (assign ลง forward decl)
+-- ============================================================
+RunLoad = function()
+    for _,step in ipairs(loadSteps) do
+        task.wait(0.3); LoadStatus.Text=step.t; LoadPct.Text=math.round(step.p*100).."%"
+        Tw(LProgFill,0.25,{Size=UDim2.new(step.p,0,1,0)})
+    end
+    task.wait(0.35)
+    for _,d in pairs(LoadCard:GetDescendants()) do
+        pcall(function()
+            if d:IsA("TextLabel") then Tw(d,0.2,{TextTransparency=1}) end
+            Tw(d,0.2,{BackgroundTransparency=1})
+        end)
+    end
+    Tw(LoadCard,0.25,{BackgroundTransparency=1}); Tw(LoadBG,0.3,{BackgroundTransparency=1})
+    task.wait(0.35); LoadCard:Destroy(); LoadBG:Destroy()
+    ABFrame.Visible=true; ABFrame.Size=UDim2.new(0,0,0,0); ABFrame.Position=UDim2.new(0.5,0,0.5,0)
+    Tw(ABFrame,0.3,{Size=UDim2.new(0,270,0,150),Position=UDim2.new(0.5,-135,0.5,-75)})
+end
+
+-- ============================================================
+--  กันแบน HANDLERS
+-- ============================================================
+abYes.MouseButton1Click:Connect(function()
+    ABFrame.Visible=false; AntiBanMode=true; SLFrame.Visible=true
+    local safeSteps={{p=0.3,t="ปิดฟีเจอร์เสี่ยง..."},{p=0.6,t="ปรับ Speed limit..."},{p=0.9,t="เปิดระบบกันแบน..."},{p=1.0,t="เสร็จสิ้น"}}
+    for _,s in ipairs(safeSteps) do task.wait(0.3); slStatus.Text=s.t; Tw(slFill,0.25,{Size=UDim2.new(s.p,0,1,0)}) end
+    task.wait(0.2); slDone.Visible=true; task.wait(0.9)
+    SLFrame.Visible=false; ABBadge.Visible=true; abLbl.Text="เปิด"; abLbl.TextColor3=C.GREEN
+    ToggleBtn.Visible=true; SetMenu(true); SetActivePage("home")
+    Notify("ระบบกันแบนเปิดแล้ว","Speed จำกัดที่ 60")
+end)
+
+abNo.MouseButton1Click:Connect(function()
+    ABFrame.Visible=false; AntiBanMode=false
+    ToggleBtn.Visible=true; SetMenu(true); SetActivePage("home")
+    Notify("NUEAKUB Hub","v9.2 โหลดสำเร็จ")
+end)
+
+abYes.MouseEnter:Connect(function() Tw(abYes,0.15,{BackgroundColor3=C.GREY}) end)
+abYes.MouseLeave:Connect(function() Tw(abYes,0.15,{BackgroundColor3=C.WHITE}) end)
+abNo.MouseEnter:Connect(function() Tw(abNo,0.15,{BackgroundColor3=C.BG3}) end)
+abNo.MouseLeave:Connect(function() Tw(abNo,0.15,{BackgroundColor3=C.OFF}) end)
+
+-- ============================================================
+--  CHARACTER ADDED
+-- ============================================================
+LocalPlayer.CharacterAdded:Connect(function()
+    SpinAngle=0; task.wait(1)
+    if Features.Speed then
+        local char=LocalPlayer.Character; if not char then return end
+        local hum=char:FindFirstChildOfClass("Humanoid"); if hum then hum.WalkSpeed=WalkSpeed end
+    end
+end)
+
+-- ============================================================
+--  INIT
+-- ============================================================
+SetActivePage("home")
+-- RunLoad จะถูกเรียกจาก TrySubmitKey หลังใส่คีย์ผ่านเท่านั้น-- ============================================================
+--  EXTENSION: HITBOX PAGE (V2 - อัปเดตแก้บั๊ก & ระบบละเว้นเพื่อน)
+-- ============================================================
+
+-- 1. สร้างปุ่มใน Sidebar สำหรับเมนู Hitbox
+local hbNavBtn = Btn(NavList, "", 1, Color3.fromRGB(0,0,0))
+hbNavBtn.Size = UDim2.new(1, 0, 0, 32)
+hbNavBtn.BackgroundTransparency = 1
+hbNavBtn.ZIndex = 13
+Corner(hbNavBtn, RAD-3)
+
+local hbNavLbl = Lbl(hbNavBtn, "HITBOX", 11, C.DIM, Enum.Font.GothamMedium, Enum.TextXAlignment.Center)
+hbNavLbl.Size = UDim2.new(1, 0, 1, 0)
+hbNavLbl.ZIndex = 14
+
+-- เอฟเฟกต์ตอนเอาเมาส์ชี้
+hbNavBtn.MouseEnter:Connect(function() 
+    if CurrentPage ~= "hitbox" then Tw(hbNavBtn,0.15,{BackgroundTransparency=0.5,BackgroundColor3=C.BG2}) end 
+end)
+hbNavBtn.MouseLeave:Connect(function() 
+    if CurrentPage ~= "hitbox" then hbNavBtn.BackgroundTransparency=1 end 
+end)
+
+-- กดแล้วเปลี่ยนหน้า
+hbNavBtn.MouseButton1Click:Connect(function() SetActivePage("hitbox") end)
+
+-- เพิ่มเข้าไปในระบบ Nav ของสคริปต์หลัก
+table.insert(NavBtns, {id="hitbox", btn=hbNavBtn, lbl=hbNavLbl})
+pageTitles["hitbox"] = "ตั้งค่า Hitbox"
+
+-- 2. สร้างหน้าต่าง (Page) สำหรับ Hitbox
+local PageHitbox = Instance.new("ScrollingFrame")
+PageHitbox.Name = "Page_hitbox"
+PageHitbox.Size = UDim2.new(1, 0, 1, -38)
+PageHitbox.Position = UDim2.new(0, 0, 0, 38)
+PageHitbox.BackgroundTransparency = 1
+PageHitbox.BorderSizePixel = 0
+PageHitbox.ScrollBarThickness = 2
+PageHitbox.ScrollBarImageColor3 = C.BORDER
+PageHitbox.CanvasSize = UDim2.new(0, 0, 0, 480) -- ขยายพื้นที่นิดหน่อย
+PageHitbox.ZIndex = 12
+PageHitbox.Visible = false
+PageHitbox.Parent = Content
+
+local hbLL = Instance.new("UIListLayout")
+hbLL.Padding = UDim.new(0, 6)
+hbLL.Parent = PageHitbox
+
+local hbPad = Instance.new("UIPadding")
+hbPad.PaddingTop=UDim.new(0,10); hbPad.PaddingLeft=UDim.new(0,10)
+hbPad.PaddingRight=UDim.new(0,10); hbPad.PaddingBottom=UDim.new(0,10)
+hbPad.Parent = PageHitbox
+
+-- 3. ตัวแปรเก็บค่าการตั้งค่า Hitbox
+local hbSettings = {
+    Enabled = false,
+    Target = "HumanoidRootPart", 
+    Size = 10,
+    Transparency = 0.5,
+    FriendName = "" -- เก็บชื่อเพื่อนที่ต้องการละเว้น
+}
+local HitboxConn = nil
+
+-- ฟังก์ชันสร้าง TextBox Card (สำหรับกรอกชื่อเพื่อน)
+local function MakeTextBoxCard(parent, label, placeholder, onChange)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, 0, 0, 48)
+    card.BackgroundColor3 = C.BG2
+    card.BorderSizePixel = 0
+    card.ZIndex = 13
+    card.Parent = parent
+    Corner(card, RAD-2)
+    Stroke(card, 1, C.BORDER, 0.4)
+
+    local mainL = Lbl(card, label, 11, C.WHITE, Enum.Font.GothamMedium, Enum.TextXAlignment.Left)
+    mainL.Size = UDim2.new(0.4, 0, 0, 16)
+    mainL.Position = UDim2.new(0, 12, 0.5, -8)
+    mainL.ZIndex = 14
+
+    local txtBG = Instance.new("Frame")
+    txtBG.Size = UDim2.new(0.5, 0, 0, 28)
+    txtBG.Position = UDim2.new(1, -12, 0.5, -14)
+    txtBG.BackgroundColor3 = C.BG3
+    txtBG.BorderSizePixel = 0
+    txtBG.ZIndex = 14
+    txtBG.Parent = card
+    Corner(txtBG, 6)
+    Stroke(txtBG, 1, C.BORDER, 0.3)
+
+    local txtIn = Instance.new("TextBox")
+    txtIn.Size = UDim2.new(1, -12, 1, 0)
+    txtIn.Position = UDim2.new(0, 6, 0, 0)
+    txtIn.BackgroundTransparency = 1
+    txtIn.Text = ""
+    txtIn.PlaceholderText = placeholder
+    txtIn.PlaceholderColor3 = C.DIM
+    txtIn.TextColor3 = C.WHITE
+    txtIn.TextSize = 10
+    txtIn.Font = Enum.Font.Gotham
+    txtIn.TextXAlignment = Enum.TextXAlignment.Center
+    txtIn.ClearTextOnFocus = false -- จุดสำคัญ: ไม่ลบข้อความเวลาเรากดพิมพ์ใหม่
+    txtIn.ZIndex = 15
+    txtIn.Parent = txtBG
+
+    txtIn.FocusLost:Connect(function()
+        onChange(txtIn.Text)
+    end)
+    return card
+end
+
+-- 4. ฟังก์ชันคืนค่าเดิมให้ผู้เล่นคนเดียว (ใช้ตอนปิด hitbox หรือคนนั้นคือเพื่อน)
+local function ResetSingleHitbox(plr)
+    if plr and plr.Character then
+        local hrp = plr.Character:FindFirstChild("HumanoidRootPart")
+        local head = plr.Character:FindFirstChild("Head")
+
+        if hrp then
+            hrp.Size = Vector3.new(2, 2, 1)
+            hrp.Transparency = 1
+            hrp.Massless = false
+        end
+        if head then
+            head.Size = Vector3.new(1.2, 1, 1.2)
+            head.Transparency = 0
+            head.Massless = false
+        end
+    end
+end
+
+-- ฟังก์ชันคืนค่าเดิมให้ทุกคน
+local function ResetAllHitboxes()
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            ResetSingleHitbox(plr)
+        end
+    end
+end
+
+-- 5. ลูปการทำงานหลัก (ย้ำสถานะตลอดเวลาเพื่อไม่ให้หลุด)
+local function UpdateHitbox()
+    if not hbSettings.Enabled then return end
+
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character then
+            -- ตรวจสอบว่าเป็นเพื่อนหรือไม่ (เช็คจากตัวพิมพ์เล็ก/ใหญ่ให้อัตโนมัติ)
+            local isFriend = false
+            if hbSettings.FriendName ~= "" then
+                -- ถ้าชื่อพิมพ์ตรงกับส่วนใดส่วนหนึ่งของชื่อผู้เล่น จะถือว่าเป็นเพื่อน
+                if string.find(string.lower(plr.Name), string.lower(hbSettings.FriendName)) then
+                    isFriend = true
+                elseif string.find(string.lower(plr.DisplayName), string.lower(hbSettings.FriendName)) then
+                    isFriend = true
+                end
+            end
+
+            -- ถ้าเป็นเพื่อน ให้ข้ามไปและคืนค่า Hitbox ให้กลับเป็นปกติ
+            if isFriend then
+                ResetSingleHitbox(plr)
+                continue
+            end
+
+            local char = plr.Character
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local part = char:FindFirstChild(hbSettings.Target)
+
+            if part and hum and hum.Health > 0 then
+                part.Size = Vector3.new(hbSettings.Size, hbSettings.Size, hbSettings.Size)
+                part.Transparency = hbSettings.Transparency
+                part.Color = Color3.fromRGB(255, 255, 0)
+                part.Material = Enum.Material.Neon
+                
+                -- ย้ำตลอดเวลาว่าห้ามชนและไม่มีน้ำหนัก เพื่อให้เราเดินทะลุได้ 100%
+                part.CanCollide = false 
+                part.Massless = true
+            end
+
+            -- คืนค่าชิ้นส่วนที่ไม่ได้เลือก
+            local otherPartName = hbSettings.Target == "Head" and "HumanoidRootPart" or "Head"
+            local otherPart = char:FindFirstChild(otherPartName)
+            if otherPart then
+                if otherPartName == "HumanoidRootPart" then
+                    otherPart.Size = Vector3.new(2, 2, 1); otherPart.Transparency = 1
+                else
+                    otherPart.Size = Vector3.new(1.2, 1, 1.2); otherPart.Transparency = 0
+                end
+            end
+        end
+    end
+end
+
+-- 6. สร้าง UI ภายในหน้า Hitbox
+MakeToggleCard(PageHitbox, "เปิดใช้งาน Hitbox", "ขยายขนาดศัตรูให้ยิงโดนง่ายขึ้น", function(on)
+    hbSettings.Enabled = on
+    if on then
+        if not HitboxConn then
+            HitboxConn = RunService.Heartbeat:Connect(UpdateHitbox)
+        end
+    else
+        if HitboxConn then 
+            HitboxConn:Disconnect()
+            HitboxConn = nil 
+        end
+        ResetAllHitboxes()
+    end
+end)
+
+MakeTextBoxCard(PageHitbox, "ละเว้นเพื่อน (ชื่อผู้เล่น)", "พิมพ์ชื่อเพื่อนที่นี่...", function(text)
+    hbSettings.FriendName = text
+    -- เมื่อพิมพ์เสร็จ ระบบจะคลาย Hitbox เพื่อนทันที
+end)
+
+MakeToggleCard(PageHitbox, "เป้าหมาย (ปิด=ตัว / เปิด=หัว)", "เลือกส่วนที่จะขยายเป็นบล็อก", function(on)
+    hbSettings.Target = on and "Head" or "HumanoidRootPart"
+    if hbSettings.Enabled then ResetAllHitboxes() end 
+end)
+
+MakeSliderCard(PageHitbox, "ขนาดบล็อก (Size)", 2, 50, 10, function(val)
+    hbSettings.Size = val
+end)
+
+MakeSliderCard(PageHitbox, "ความโปร่งใส (%)", 0, 100, 50, function(val)
+    hbSettings.Transparency = val / 100
+end)
+
+-- ============================================================
+-- EXTENSION: PLAYER ESP 3D HIGHLIGHT & CHECK HACK (PAID💸)
+-- ============================================================
+
+task.spawn(function()
+    task.wait(0.5)
+
+    -- 1. อัปเดตชื่อแบรนด์จาก v9.2 เป็น PAID💸
+    pcall(function()
+        for _, gui in pairs(game:GetService("CoreGui"):GetDescendants()) do
+            if gui:IsA("TextLabel") and string.find(gui.Text, "v9.2") then
+                gui.Text = string.gsub(gui.Text, "v9.2", "PAID💸")
+            end
+        end
+    end)
+
+    -- 2. ตั้งค่าระบบ ESP
+    local ESPSettings = {
+        HighlightEnabled = false,
+        NameESPEnabled = false,
+        FillColor = Color3.fromRGB(0, 170, 255),
+        OutlineColor = Color3.fromRGB(255, 255, 255),
+        SpeedThreshold = 100 -- ค่าความเร็วที่ถือว่าใช้โปร
+    }
+
+    -- 3. ฟังก์ชันสร้าง 3D Body Highlight ทั้งตัว
+    local function Apply3DHighlight(player)
+        if player == LocalPlayer then return end
+        
+        local function RefreshHighlight()
+            local char = player.Character
+            if not char then return end
+
+            local existingHL = char:FindFirstChild("PAID_Highlight")
+            if ESPSettings.HighlightEnabled then
+                if not existingHL then
+                    local hl = Instance.new("Highlight")
+                    hl.Name = "PAID_Highlight"
+                    hl.FillColor = ESPSettings.FillColor
+                    hl.OutlineColor = ESPSettings.OutlineColor
+                    hl.FillTransparency = 0.5
+                    hl.OutlineTransparency = 0
+                    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                    hl.Parent = char
+                end
+            else
+                if existingHL then existingHL:Destroy() end
+            end
+        end
+
+        if player.Character then RefreshHighlight() end
+        player.CharacterAdded:Connect(function()
+            task.wait(1)
+            RefreshHighlight()
+        end)
+    end
+
+    -- 4. ฟังก์ชันสร้าง Name ESP บนหัว (ไม่บังตัวผู้เล่น) + ตรวจจับโปร
+    local function ApplyNameESP(player)
+        if player == LocalPlayer then return end
+
+        local function RefreshNameESP()
+            local char = player.Character
+            if not char or not char:FindFirstChild("Head") then return end
+            local head = char.Head
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+
+            local bgui = head:FindFirstChild("PAID_NameESP")
+
+            if ESPSettings.NameESPEnabled then
+                if not bgui then
+                    bgui = Instance.new("BillboardGui")
+                    bgui.Name = "PAID_NameESP"
+                    bgui.Size = UDim2.new(0, 160, 0, 40)
+                    bgui.StudsOffset = Vector3.new(0, 2.8, 0) -- ลอยเหนือหัวเพื่อไม่บังตัวผู้เล่น
+                    bgui.AlwaysOnTop = true
+                    bgui.Parent = head
+
+                    local txt = Instance.new("TextLabel")
+                    txt.Name = "ESPLabel"
+                    txt.Size = UDim2.new(1, 0, 1, 0)
+                    txt.BackgroundTransparency = 1 -- พื้นหลังโปร่งใส 100%
+                    txt.Font = Enum.Font.GothamBold
+                    txt.TextSize = 12
+                    txt.TextStrokeTransparency = 0.2
+                    txt.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+                    txt.Parent = bgui
+                end
+
+                local txtLabel = bgui:FindFirstChild("ESPLabel")
+                if txtLabel then
+                    local isHacker = hrp and (hrp.Velocity.Magnitude > ESPSettings.SpeedThreshold)
+                    
+                    if isHacker then
+                        txtLabel.Text = player.DisplayName .. "\n[โปร]"
+                        txtLabel.TextColor3 = Color3.fromRGB(255, 30, 30) -- สีแดงเตือนโปร
+                    else
+                        txtLabel.Text = player.DisplayName
+                        txtLabel.TextColor3 = Color3.fromRGB(255, 255, 255) -- สีขาวปกติ
+                    end
+                end
+            else
+                if bgui then bgui:Destroy() end
+            end
+        end
+
+        if player.Character then RefreshNameESP() end
+        player.CharacterAdded:Connect(function()
+            task.wait(1)
+            RefreshNameESP()
+        end)
+
+        if safeConnections then
+            safeConnections["NameESP_" .. player.Name] = RunService.Heartbeat:Connect(RefreshNameESP)
+        end
+    end
+
+    -- 5. ผูกปุ่มเข้ากับระบบ UI
+    local targetPage = PageMisc or Content:FindFirstChildOfClass("ScrollingFrame")
+    if targetPage and type(MakeToggleCard) == "function" then
+        MakeToggleCard(targetPage, "3D Body Highlight (PAID💸)", "ไฮไลท์เรืองแสงมองเห็นทะลุกำแพงทั้งตัว", function(on)
+            ESPSettings.HighlightEnabled = on
+            for _, p in pairs(Players:GetPlayers()) do Apply3DHighlight(p) end
+        end)
+
+        MakeToggleCard(targetPage, "Name ESP & Check Hack (PAID💸)", "แสดงชื่อบนหัว + เตือนสีแดงเมื่อเจอคนใช้โปร", function(on)
+            ESPSettings.NameESPEnabled = on
+            for _, p in pairs(Players:GetPlayers()) do ApplyNameESP(p) end
+        end)
+    end
+end)
+    -- ============================================================
+    -- 6. ฟังก์ชันดูดปืน/ไอเทมตกพื้น (Weapon & Loot Magnet)
+    -- ============================================================
+    local MagnetSettings = {
+        Enabled = false,
+        Radius = 25 -- ระยะการดูด/ขยายการเก็บ (หน่วย Studs) ปรับเพิ่ม-ลดได้ตามต้องการ
+    }
+
+    if type(MakeToggleCard) == "function" then
+        MakeToggleCard(PageMisc, "ดูดปืน/ไอเทมตกพื้น (Loot Magnet)", "ขยายระยะเก็บปืนและไอเทมดรอปเมื่อเดินผ่าน", function(on)
+            MagnetSettings.Enabled = on
+            if on then
+                safeConnections["ItemMagnet"] = RunService.Heartbeat:Connect(function()
+                    if not MagnetSettings.Enabled then return end
+                    
+                    local char = LocalPlayer.Character
+                    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+                    local myHrp = char.HumanoidRootPart
+
+                    -- สแกนเฉพาะวัตถุที่เป็น Tool (ปืน/อาวุธ) หรือมีระบบสัมผัสเก็บของใน Workspace
+                    for _, obj in pairs(workspace:GetChildren()) do
+                        
+                        -- กรณีที่ 1: วัตถุเป็น Tool (ปืน/อาวุธที่ตกพื้น)
+                        if obj:IsA("Tool") and obj:FindFirstChild("Handle") then
+                            local handle = obj.Handle
+                            local dist = (handle.Position - myHrp.Position).Magnitude
+                            
+                            if dist <= MagnetSettings.Radius then
+                                -- จำลองการแตะสัมผัสเพื่อเก็บเข้าตัวทันที
+                                if typeof(firetouchinterest) == "function" then
+                                    firetouchinterest(myHrp, handle, 0)
+                                    firetouchinterest(myHrp, handle, 1)
+                                else
+                                    -- สำรอง: ย้ายตำแหน่ง Handle ของปืนมาที่ตัวเราเพื่อส่งผลให้เกิดการเก็บ
+                                    handle.CFrame = myHrp.CFrame
+                                end
+                            end
+
+                        -- กรณีที่ 2: วัตถุเป็น Part ที่มี TouchInterest (ไอเทมดรอปประเภทกล่อง/กระสุน)
+                        elseif obj:IsA("BasePart") and obj:FindFirstChildOfClass("TouchInterest") then
+                            local dist = (obj.Position - myHrp.Position).Magnitude
+                            
+                            if dist <= MagnetSettings.Radius then
+                                if typeof(firetouchinterest) == "function" then
+                                    firetouchinterest(myHrp, obj, 0)
+                                    firetouchinterest(myHrp, obj, 1)
+                                else
+                                    obj.CFrame = myHrp.CFrame
+                                end
+                            end
+                        end
+
+                    end
+                end)
+            else
+                -- ปิดการทำงานและล้างระบบเชื่อมต่อ
+                if safeConnections and safeConnections["ItemMagnet"] then
+                    safeConnections["ItemMagnet"]:Disconnect()
+                    safeConnections["ItemMagnet"] = nil
+                end
+            end
+        end)
+    end
